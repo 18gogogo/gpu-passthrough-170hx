@@ -41,6 +41,7 @@ sudo dmesg | grep -iE "SEC2_DEBUG|WPR meta|Booter"       # fbSize=0x...100000000
 - `--no-passthrough` install flag skips the VM prep. v0.4 also drops the cold-reboot requirement ('No more cold reboots').
 - Manual tools: `sudo ./tools/passthrough.sh status|prepare|restore <bdf...>` — `restore` is needed after a VM was KILLED (not shut down): the ACR version stamp is write-protected once set and blocks the next VM until cleared.
 - Verified on this rig (2026-09-20): all 4 cards → one VM, guest shows 4x 64GB, only benign 0x31 Booter noise.
+- Verified 2026-09-21: a MANUAL single-card vfio bind (echo > drivers/vfio-pci/bind, no VM involved) fired the gsp-restore udev hook — journal: "0000:0b:00.0 GSP boot state already clean". The hook works for split-config single-card passthrough too.
 
 ## Known-good state on this rig (verify, don't assume)
 - Host: cmpunlocker v0.4 installed (passthrough components present), `card_profile`=8gb, driver 610.57.04, 4x 64GB.

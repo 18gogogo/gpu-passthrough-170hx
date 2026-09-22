@@ -1,47 +1,37 @@
-# GPU Passthrough & Rental — 170HX (GA100 64GB) on KVM
+# GPU Passthrough & Rental — CMP 170HX (170HX) rig
 
-A field-tested runbook for passing **4× CMP 170HX (GA100, 64GB-unlocked)** GPUs from an
-Ubuntu host through to a single KVM/libvirt VM, plus the pitfalls that actually bit us.
-Written from a real rig: MSI X399 SLI PLUS, 128GB RAM, R5 340X host display, headless host.
+A practical, battle-tested operations manual for running **4× NVIDIA CMP 170HX (GA100, 64GB-unlocked)** on a single consumer workstation:
 
-> This is a **Hermes Agent skill** (SKILL.md + references). You can read it as a normal
-> markdown runbook, or drop the whole folder into `~/.hermes/skills/` and let Hermes load it.
+- **Docker GPU rental** (Clore.ai) with the 3-4 cards left on the host
+- **PCIe passthrough** of 1 or 4 cards to VMs (virt-manager / libvirt + QEMU)
+- **Windows 11 unlock path** (blog kkk.rs `ga100ctl`) — 64GB verified
+- Host desktop survival, RustDesk, vLLM coexistence, and a full fault/restore playbook
 
-## What this covers
-- **Strategy A: runtime nvidia ↔ vfio switching** — the *override-first* order that actually
-  works when something (rustdesk, a lingering session, nvidia-persistenced) keeps auto-loading
-  the nvidia module and makes the naive "rmmod first" order fail with `device or resource busy`.
-- **VM creation** (Q35, SeaBIOS, 64GB BAR, virtual GPU kept, swtpm TPM).
-- **Guest verification** and the cmpunlocker 8GB→64GB unlock rule (*the unlock follows the
-  driver, not the card*).
-- **Diagnosing a faulty card vs a faulty slot** — GSP booter error codes (0x31 = normal noise
-  on the patched driver; 0x15 + `Max GSP-RM boot attempts exceeded` = real fault), the
-  card-swap test, and VM IP drift.
-- **Headless host** — the VM's GNOME desktop (gdm3) is your only GUI; the host has no monitor.
-- **Long-running guest tasks** (driver install) and **rental** notes (Vast.ai etc.).
+Written for the author's rig (MSI X399, R5 340X display, Ubuntu 26.04 desktop) but organized so the transferable lessons (fd-holder hunting, override-first switching, locale traps) are easy to lift.
 
-## Files
-| File | What it is |
+## Contents
+
+| File | What it covers |
 |---|---|
-| `SKILL.md` | The main runbook (start here). |
-| `references/cmp-170hx.md` | Card facts: what the 170HX/GA100 actually is. |
-| `references/cmpunlocker.md` | The 8GB→64GB unlock mechanism + install/verify steps. |
-| `references/gpu-rental-platforms.md` | GPU rental platform facts. |
+| `SKILL.md` | Main manual: standing rules, switch flows (full 4-card + partial single-card), VM creation, guest verification, rental ops, restore |
+| `references/cmp-170hx.md` | Card facts: SKUs, unlock mechanism, driver branches |
+| `references/cmpunlocker.md` | The Linux-side unlock (cmpunlocker) + GSP boot state |
+| `references/faulty-card-diagnosis.md` | Fault history, card-vs-slot isolation, current slot map |
+| `references/clore-rental.md` | Clore.ai agent setup, container whitelist, pricing workflow |
+| `references/gpu-rental-platforms.md` | Platform comparison |
+| `references/guest-remote-desktop.md` | RustDesk inside the guest |
+| `references/desktop-and-boot.md` | Headless host desktop, boot triage, worked restore examples |
+| `references/windows-unlock-tool.md` | The Windows-native ga100ctl unlock (blog kkk.rs) |
 
-## Key standing rules (read these first)
-1. **Never passthrough the host display card** — it is the host's only display output.
-2. **170HX cards have NO display output** — the VM must keep a virtual GPU (QXL/virtio-gpu);
-   you reach the VM via RDP / RustDesk / Tailscale. Never follow a guide that says
-   "remove the default video device".
-3. **4 cards go to ONE VM at a time.**
-4. **Clone/backup before touching GRUB** (IOMMU kernel args) — the only step that can brick boot.
-5. **Data Center (Tesla) driver branch** on host AND guest — GeForce/Quadro branches don't know GA100.
+## Key gotchas (the ones that cost real hours)
 
-## Adapting to your rig
-- Replace `<host-ip>` / `<host-user>` / `<vm-ip>` with your own values.
-- The slot↔card map in SKILL.md is a *worked example* from this rig — re-verify after any swap.
-- The canonical per-rig guide referenced is `/home/ubuntu/170hx.md` on the host (not included here).
+1. **Every process holding `/dev/nvidia*` blocks unbind** — vLLM with `NVIDIA_VISIBLE_DEVICES=all`, the Clore agent, `ptyxis`, even RustDesk. Find them with `sudo lsof /dev/nvidia*` BEFORE any switch.
+2. **Override-first** is the only reliable unbind/bind order.
+3. **D-state wedges are unkillable** — reboot is the only fix; wrap every sysfs write in `timeout`.
+4. **Localized libvirt** — state names come back in Chinese (執行中/關機); never grep for English.
+5. **BDF maps rot** — after any physical card move, re-derive from `lspci -nnk` and re-check the scripts.
+6. **Secure Boot off + Above 4G Decoding** (or QEMU `pci-hole64-size=1TB`) for 64GB-BAR guests.
 
 ## License
-MIT — do what you want, no warranty. GPU passthrough can brick a boot if you get GRUB wrong;
-back up first.
+
+MIT — take what helps, fix what doesn't, and file a PR with the card you tested it on.
